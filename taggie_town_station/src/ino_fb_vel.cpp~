@@ -1,0 +1,132 @@
+﻿//*************************************************************
+//
+//This code load a path data from .txt and then saves it in thepath topic.
+//And then, according the path to impelment L1 contorl.
+//
+//
+//*CarControl is my msgs
+
+
+
+
+
+#include <tf/transform_datatypes.h>
+#include "ros/ros.h"
+#include <geometry_msgs/PoseStamped.h>
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include <geometry_msgs/PointStamped.h>
+#include <time.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/Path.h>
+#include <std_msgs/Float32MultiArray.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/Int32.h>
+#include <taggytown/car_cmd.h>   //v1,v2
+#include <cmath>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#define Lf  0.3
+#define L 0.086
+#define lf 0.1
+#define V_bar 0.5
+#define CONTROL_LOOP_FREQ 20
+#define PWM_GAIN 17.33*2
+#define PI 3.141592
+ros::Time current_time,last_time;
+double roll_now, pitch_now, yaw_now;
+double roll_last, pitch_last, yaw_last;
+geometry_msgs::PoseStamped pose_now, pose_last;
+double dis,angle,v,omega;
+
+/********************************************************************
+*																	*
+*								class								*
+*																	*
+********************************************************************/
+void posecb(const geometry_msgs::PoseStamped::ConstPtr &pose){
+
+    current_time = ros::Time::now();
+
+         pose_now = *pose;
+
+         double pose_now_x=pose_now.pose.position.x;
+         double pose_now_y=pose_now.pose.position.y;
+         double x_now = pose_now.pose.orientation.x;
+         double y_now = pose_now.pose.orientation.y;
+         double z_now = pose_now.pose.orientation.z;
+         double w_now = pose_now.pose.orientation.w;
+
+         tf::Quaternion q_now(x_now, y_now, z_now, w_now);
+         tf::Matrix3x3 quat_now(q_now);
+         quat_now.getRPY(roll_now, pitch_now, yaw_now);
+
+         double pose_last_x=pose_now.pose.position.x;
+         double pose_last_y=pose_now.pose.position.y;
+         double x_last = pose_last.pose.orientation.x;
+         double y_last = pose_last.pose.orientation.y;
+         double z_last = pose_last.pose.orientation.z;
+         double w_last = pose_last.pose.orientation.w;
+
+
+         tf::Quaternion q_last(x_last, y_last, z_last, w_last);
+         tf::Matrix3x3 quat_last(q_last);
+         quat_last.getRPY(roll_last, pitch_last, yaw_last);
+
+
+        dis= sqrt((pose_now_x-pose_last_x)*(pose_now_x-pose_last_x)+
+(pose_now_y-pose_last_y)*(pose_now_y-pose_last_y));
+        angle=yaw_now-yaw_last;
+
+       double duration=current_time.toSec()-last_time.toSec();
+
+        v=dis/duration;
+        omega=angle/duration;
+
+
+                last_time = ros::Time::now();
+                pose_last = pose_now;
+
+
+}
+
+
+int main(int argc, char **argv)
+{
+  //Initi ROS
+  ros::init(argc, argv, "posefb");
+  ros::NodeHandle n;
+
+  ros::Publisher pub_ =n.advertise<std_msgs::Int32>("V1",1000);
+  ros::Publisher pub_1 =n.advertise<std_msgs::Int32>("V2",1000);
+
+  ros::Subscriber sub_pose = n.subscribe("ino_pose",10000,posecb);
+
+  ros::Time t_now, t_last;
+  while (n.ok()){
+  t_now=ros::Time::now();
+
+
+  if(t_now.toSec()-t_last.toSec()>1/CONTROL_LOOP_FREQ){
+  double v1=(-L*omega+2*v)/2;
+  double v2=(L*omega+2*v)/2;
+
+  int du1=(int)PWM_GAIN*(V_bar-v1);
+  int du2=(int)PWM_GAIN*(V_bar-v2);
+
+  std_msgs::Int32 u1,u2;
+  u1.data=du1;
+ u2.data=du2;
+  pub_.publish(u1);
+   pub_1.publish(u2);
+
+    t_last=t_now;
+  }
+  }
+  ros::spin();
+
+  return 0;
+}
+

@@ -1,0 +1,24 @@
+#include <ros/ros.h>
+#include <std_msgs/Int32.h>
+
+
+void num_received(const std_msgs::Int32& num){
+    ros::Rate loop_rate(5);
+
+    ROS_INFO("Number received now: [%d]", num.data);
+
+    loop_rate.sleep();
+}
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "listener_and_publisher");
+
+    ros::NodeHandle nh;
+
+    ros::Subscriber number_sub = nh.subscribe("number_publish", 1000, num_received);
+
+    ros::spin();
+
+    return 0;
+}

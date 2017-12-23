@@ -1,0 +1,238 @@
+﻿#include <tf/transform_datatypes.h>
+#include "ros/ros.h"
+#include <geometry_msgs/PoseStamped.h>
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include <geometry_msgs/PointStamped.h>
+#include <time.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/Path.h>
+#include <std_msgs/Float32MultiArray.h>
+#include <std_msgs/Float64.h>
+//#include <taggytown/CarControl.h>   //v1,v2
+#include <cmath>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#define Lf  0.1
+#define L 0.10
+#define lf 0.1
+#define Vcmd 1
+#define CONTROL_LOOP_FREQ 5
+#define Length 736
+#define Width  429  //cell
+#define RESOLUTION 0.0025  //vary with map
+#define xm Length/2*RESOLUTION  //center of map
+#define ym Width/2*RESOLUTION  
+#define PI 3.141592
+
+
+
+
+class L1controller{
+
+public:
+
+L1controller(const nav_msgs::Path& path){
+    mypath=path;
+    //publish topic
+    //pub_ =n.advertise<std_msgs::Float32MultiArray>("vel_cmd",1000);
+    //pub_1 =n.advertise<taggytown::CarControl>("vel_cmd1",100);
+    pub_ =n.advertise<std_msgs::Float64>("distance",1000);
+    pub_1 =n.advertise<std_msgs::Float64>("angle",1000);
+    pub_2 =n.advertise<geometry_msgs::PointStamped>("goal",1000);
+    pub_3 =n.advertise<nav_msgs::Path>("path",1000);
+    //subscribe topic
+    sub_pose = n.subscribe("ino_pose",10000,&L1controller::posecb,this);
+    //sub_map = n.subscribe("/map",1000,&L1controller::mapcb,this);
+
+    current_time = ros::Time::now();
+    last_time = ros::Time::now();
+   find_index=0;
+   timer = n.createTimer(ros::Duration((float)1/CONTROL_LOOP_FREQ),&L1controller::loop_control,this);
+}
+
+void posecb(const geometry_msgs::PoseStamped::ConstPtr &pose){
+
+    current_time = ros::Time::now();
+
+     pose_now = *pose;
+
+     double x_now = pose_now.pose.orientation.x;
+     double y_now = pose_now.pose.orientation.y;
+     double z_now = pose_now.pose.orientation.z;
+     double w_now = pose_now.pose.orientation.w;
+
+     tf::Quaternion q_now(x_now, y_now, z_now, w_now);
+     tf::Matrix3x3 quat_now(q_now);
+     quat_now.getRPY(roll_now, pitch_now, yaw_now);
+     if(find_index==1570)find_index=0;
+     find_index=searchGoal(find_index);
+
+     // last_time = ros::Time::now();
+     //pose_last = pose_now;
+
+     //ROS_INFO(" position_x = %f\tposition_y = %f yaw=%f\n", pose_now.pose.position.x,pose_now.pose.position.y,yaw_now);
+     
+}
+
+
+
+void loop_control(const ros::TimerEvent& event){
+
+
+
+   //std_msgs::Float32MultiArray msg;
+   //taggytown::CarControl  msg_1;
+    
+
+
+std_msgs::Float64 distance, angle;
+distance.data=dis;
+angle.data=angle_rotate;
+    pub_.publish(distance);
+    pub_1.publish(angle);
+    ROS_INFO("ang:=%f\t\tdis:%f",angle_rotate,dis);
+    geometry_msgs::PointStamped inogoal;
+    inogoal.point.x=x_g;
+    inogoal.point.y=y_g;
+    inogoal.point.z=0;
+    inogoal.header.frame_id="/map";
+       pub_2.publish(inogoal);
+       pub_3.publish(mypath);
+ }
+ 
+ 
+
+
+int searchGoal(int index_begin){
+
+    double car_x = pose_now.pose.position.x;
+    double car_y = pose_now.pose.position.y;
+    double car_theta = yaw_now;
+
+    double MIN_DIFF =0.4;
+    double dist;
+    double *p;  
+
+
+
+    //find the waypoint on th path  x_g y_g
+    for(int i=index_begin;i<mypath.poses.size();i++){
+  //for(int i=0;i<mypath.poses.size();i++){
+
+            double goal_x=mypath.poses[i].pose.position.x;
+            double goal_y=mypath.poses[i].pose.position.y;
+
+            double goal_x_fwd=mypath.poses[i+1].pose.position.x;
+            double goal_y_fwd=mypath.poses[i+1].pose.position.y;
+            double goal_x_bh=mypath.poses[i-1].pose.position.x;
+            double goal_y_bh=mypath.poses[i-1].pose.position.y;
+           dist=sqrt(pow((car_x - goal_x),2)+pow ((car_y - goal_y),2));
+            //ROS_INFO("%f\t\t%d",dist-Lf,i);
+          // if(fabs(dist-Lf)< MIN_DIFF && fabs(atan2(-car_y+goal_y, - car_x + goal_x)-car_theta)<3.14/2){
+            if(fabs(dist-Lf)< MIN_DIFF &&
+                    ( (goal_x_fwd-goal_x_bh)*(goal_x-car_x)+(goal_y_fwd-goal_y_bh)*(goal_y-car_y))>0)
+              {
+                MIN_DIFF=fabs(dist-Lf);
+               x_g=goal_x;
+               y_g=goal_y;
+               index_begin=i;
+
+               // ROS_INFO("%d",index_begin);
+
+
+
+                    if(fabs(dis-Lf)<0.0008){
+                         index_begin=i;
+                             break;
+               }
+           }
+
+        }
+
+
+
+
+    //ROS_INFO("point found %d x=%f y=%f %f",index_begin,x_g, y_g,MIN_DIFF);
+dis=sqrt(pow((car_x - x_g),2)+pow ((car_y - y_g),2));
+angle_rotate = atan2(y_g-car_y,x_g-car_x)-car_theta;
+if(angle_rotate>PI)angle_rotate-=2*PI;
+if(angle_rotate<-PI)angle_rotate+=2*PI;
+
+    //ROS_INFO("%f\t %f ",delta_theta, dis);
+    ctl_flag=1;
+    return index_begin;
+}
+
+
+private:
+    ros::NodeHandle n;
+    ros::Subscriber sub_pose, sub_map;
+    ros::Publisher pub_,pub_1,pub_2,pub_3;
+    geometry_msgs::PoseStamped pose_now, pose_last;
+    ros::Time current_time, last_time ;
+    nav_msgs::OccupancyGrid mymap;
+    ros::Timer timer;
+    double x_g, y_g;
+    double roll_now, pitch_now, yaw_now;
+    double roll_last, pitch_last, yaw_last;
+    double mu, v , w ,v1,v2;
+    double angle_rotate;
+    double delta_theta,dis;
+    int ctl_flag;
+    int find_flag;
+    int find_index;
+    nav_msgs::Path mypath;
+
+
+
+
+};
+
+void get_tragectory(bool);
+nav_msgs::Path path;
+
+int main(int argc, char **argv)
+{
+  //Initi ROS
+  ros::init(argc, argv, "posectl");
+  bool haspath= false;
+  get_tragectory(!haspath);
+  //Create an object of class SubscribeAndPublish that will take care of everything
+  L1controller l1ctrl(path);
+
+  ros::spin();
+
+  return 0;
+}
+  
+
+void get_tragectory(bool b){
+  double temx,temy;
+  std::string headline;
+  path.header.frame_id="map";
+  std::vector<geometry_msgs::PoseStamped> plan;
+  geometry_msgs::PoseStamped tempose;
+
+    std::ifstream myfile;
+    ROS_INFO("already open");
+    myfile.open("/home/happysamuel/catkin_ws/src/taggie_town_station/taggietown_samuel_path.txt",std::ios::in);
+    if(myfile.is_open()){
+            ROS_INFO("open");
+            getline(myfile,headline);
+
+            while (myfile>>temx>>temy){
+              tempose.pose.position.x=temx;
+              tempose.pose.position.y=temy;
+              plan.push_back(tempose);
+
+
+          }
+    }else ROS_INFO("unable to open");
+
+path.poses=plan;
+ROS_INFO("%f",path.poses[1570].pose.position.x);
+}
+

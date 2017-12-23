@@ -1,0 +1,6 @@
+image: taggietown_map_final.png
+resolution: 0.0024
+origin: [-2.895, -1.79, 0]
+occupied_thresh: 0.5
+free_thresh: 0.396
+negate: 0

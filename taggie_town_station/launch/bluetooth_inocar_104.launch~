@@ -1,0 +1,6 @@
+<launch>
+    <node name="rosserial_python_104"	pkg="rosserial_python"	type="serial_node.py" >
+	<param name="port" value="/dev/rfcomm2" />
+	<param name="baud" value="9600" />
+    </node>
+</launch>

@@ -1,0 +1,20 @@
+image_width: 640
+image_height: 480
+camera_name: samuel_station
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [353.9128824597453, 0, 323.8076601201528, 0, 353.709199917238, 230.8982951371389, 0, 0, 1]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.2796778998202089, 0.06343418460767525, 0.007132468206418551, -0.001147795576045795, 0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [253.3976135253906, 0, 322.5085250881821, 0, 0, 299.24462890625, 233.3955518892326, 0, 0, 0, 1, 0]
